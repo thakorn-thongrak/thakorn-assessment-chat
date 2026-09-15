@@ -27,7 +27,7 @@
 - `app/api/push/route.ts` — route handler แบบ POST รับ `userId` + `content` (ข้อความหรือสติกเกอร์) จากหน้าเว็บแล้วส่งต่อไปยัง LINE Push API
 - `app/api/conversations/route.ts` — route handler แบบ GET คืนรายชื่อการสนทนาทั้งหมด (userId, โปรไฟล์, ข้อความล่าสุด) เรียงตามเวลาล่าสุดก่อน ให้ sidebar ใช้แสดงผล
 - `lib/line.ts` — รวมฟังก์ชัน helper สำหรับคุยกับ LINE: `verifySignature` (ตรวจสอบ webhook signature), `replyMessage`/`pushMessage` (ส่งข้อความหรือสติกเกอร์ผ่าน reply token หรือแบบ proactive), `getProfile` (ดึงชื่อ/รูปโปรไฟล์ผู้ใช้), และ `stickerImageUrl` (สร้าง URL รูปสติกเกอร์จาก sticker id) รวมถึง type definition ของ webhook event ที่ LINE ส่งมา
-- `lib/store.ts` — ที่เก็บข้อความและโปรไฟล์แบบ in-memory (ดูรายละเอียดและข้อควรระวังในหัวข้อถัดไป)
+- `lib/store.ts` — ที่เก็บข้อความและโปรไฟล์ ต่อกับ Upstash Redis ผ่าน `@upstash/redis` (ดูรายละเอียดในหัวข้อถัดไป)
 
 ## เทคโนโลยีที่ใช้ (Tech stack)
 
@@ -39,21 +39,28 @@
 
 การเชื่อมต่อกับ LINE ใช้ **LINE Messaging API** ผ่าน REST endpoint ของ LINE โดยตรง (ไม่ได้พึ่งพา SDK ภายนอก) ได้แก่ Push Message API (`/v2/bot/message/push`) สำหรับส่งข้อความแบบ proactive และ Reply Message API (`/v2/bot/message/reply`) สำหรับตอบกลับ event ที่มาจาก webhook การตรวจสอบความถูกต้องของ webhook request ใช้ Node.js built-in module `crypto` ในการคำนวณ HMAC-SHA256 signature
 
-## หมายเหตุเรื่อง in-memory store
+## เรื่องที่เก็บข้อความ (Upstash Redis)
 
-`lib/store.ts` เก็บข้อความไว้ใน memory ของ process โดยใช้ `Map` ธรรมดา ซึ่งเหมาะสำหรับ development และ demo เท่านั้น ไม่เหมาะกับการใช้งานจริงในระยะยาว เพราะเมื่อ deploy ขึ้น Vercel แต่ละ serverless function invocation อาจไปทำงานบนคนละ instance กัน ทำให้ข้อความที่ webhook เก็บไว้ในหนึ่ง instance อาจไม่ถูกมองเห็นจาก request polling ที่ไปตกที่อีก instance หนึ่ง (โดยเฉพาะเมื่อมี traffic สูงหรือเกิด cold start) และข้อมูลทั้งหมดจะหายทันทีที่ instance ถูก recycle หรือ redeploy
+`lib/store.ts` เดิมเก็บข้อความไว้ใน memory ของ process ด้วย `Map` ธรรมดา ซึ่งใช้ได้แค่ตอน dev/demo เพราะบน Vercel แต่ละ serverless invocation อาจไปตกคนละ instance กัน ทำให้ข้อความหายไปมาระหว่าง request ได้ และข้อมูลทั้งหมดหายทันทีที่ redeploy — ปัญหานี้เกิดขึ้นจริงระหว่างพัฒนา (สังเกตได้ตอนทดสอบแล้ว conversation list ว่างเปล่าหลัง deploy ใหม่)
 
-เมื่อโปรเจกต์นี้จะถูกนำไปใช้งานจริง (production) หรือมีผู้ใช้มากกว่าหนึ่งคนใช้งานพร้อมกัน หรือมี traffic เริ่มสูงขึ้น ควรย้ายไปใช้ [Vercel KV](https://vercel.com/docs/storage/vercel-kv) (ซึ่งเป็น Upstash Redis ที่ผูกกับ Vercel) แทน โดยวิธีการย้ายคือติดตั้ง Vercel KV integration ในโปรเจกต์ แล้วแก้ฟังก์ชัน `addMessage`/`getMessages` ใน `lib/store.ts` ให้เรียก `kv.rpush(userId, ...)` และ `kv.lrange(userId, ...)` แทนการใช้ `Map` ในหน่วยความจำ เนื่องจากได้ออกแบบ signature ของฟังก์ชันไว้ให้คงที่ตั้งแต่แรก การย้ายจึงไม่ต้องแก้ route handler อื่นที่เรียกใช้งานอยู่เลย
+ตอนนี้ย้ายไปใช้ **Upstash for Redis** แล้ว (ติดตั้งผ่าน Vercel Marketplace integration, แผนฟรี ไม่มีค่าใช้จ่าย) ซึ่งเป็น managed Redis ที่อยู่นอก process การเก็บข้อมูลจึงถาวรและใช้ร่วมกันได้ทุก instance/region/deployment โครงสร้างข้อมูลใน Redis:
+
+- `messages:{userId}` — Redis list เก็บ `ChatMessage` เรียงเก่า→ใหม่ (ใช้ `RPUSH`/`LRANGE`)
+- `conversations` — Redis sorted set เก็บ userId ทั้งหมด คะแนน (score) คือเวลาข้อความล่าสุด (ใช้ `ZADD`/`ZRANGE ... REV` เพื่อโชว์คนคุยล่าสุดก่อน)
+- `profile:{userId}` — โปรไฟล์ (ชื่อ/รูป) ของแต่ละ userId ที่ cache ไว้
+- `message:next_id` — ตัวนับ (ใช้ `INCR`) สำหรับสร้าง id ข้อความที่ไม่ซ้ำกันทั่วทั้งระบบ
+
+เชื่อมต่อผ่าน `@upstash/redis` SDK (`Redis.fromEnv()`) ซึ่งอ่าน env var `KV_REST_API_URL`/`KV_REST_API_TOKEN` ที่ integration ตั้งให้อัตโนมัติทั้ง Production, Preview, และ Development — ไม่ต้องตั้งค่าเพิ่มเอง ฟังก์ชันทุกตัวใน `lib/store.ts` เป็น `async` แล้ว (เดิม synchronous) เพราะเรียก Redis ผ่าน REST API
 
 ## Environment variables
 
-โปรเจกต์ต้องการตัวแปรสภาพแวดล้อมสามตัว:
+โปรเจกต์ต้องการตัวแปรสภาพแวดล้อมที่ต้องตั้งเอง 3 ตัว (ดูตัวอย่างได้ที่ `.env.local.example`):
 
 - `LINE_CHANNEL_SECRET` — จาก LINE Developers Console, ใช้ตรวจสอบ signature ของ webhook request ว่ามาจาก LINE จริง
 - `LINE_CHANNEL_ACCESS_TOKEN` — จาก LINE Developers Console, ใช้เป็น token สำหรับยืนยันตัวตนตอนเรียก Push/Reply Message API
 - `NEXT_PUBLIC_LINE_OA_ID` — Basic ID (`@handle`) ของ LINE OA นี้ เช่น `@831ltgzv` เป็นข้อมูลสาธารณะไม่ใช่ความลับ (ขึ้นต้นด้วย `NEXT_PUBLIC_` เพราะต้อง bundle ไปฝั่ง client เพื่อโชว์เป็นลิงก์/ข้อมูลแอดเพื่อนในหน้าเว็บได้)
 
-ดูตัวอย่างได้ที่ `.env.local.example`
+นอกจากนี้ยังมีตัวแปรของ Upstash Redis (`KV_REST_API_URL`, `KV_REST_API_TOKEN` ฯลฯ) ที่ Vercel Marketplace integration ตั้งให้อัตโนมัติตอนติดตั้ง — **ไม่ต้องตั้งเอง** แต่ถ้ารันในเครื่อง local ต้องดึงมาด้วย `vercel env pull .env.local` (หลัง `vercel link` โปรเจกต์แล้ว) ไม่งั้น `lib/store.ts` จะต่อ Redis ไม่ได้
 
 ## การติดตั้งและรันในเครื่อง
 
@@ -62,7 +69,15 @@ npm install
 cp .env.local.example .env.local
 ```
 
-จากนั้นแก้ไฟล์ `.env.local` ใส่ค่า `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` และ `NEXT_PUBLIC_LINE_OA_ID` ที่ได้จาก LINE Developers Console (ดูวิธีขอค่าเหล่านี้ในหัวข้อ "Setup LINE Developers Console" ด้านล่าง) แล้วรัน dev server:
+จากนั้นแก้ไฟล์ `.env.local` ใส่ค่า `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` และ `NEXT_PUBLIC_LINE_OA_ID` ที่ได้จาก LINE Developers Console (ดูวิธีขอค่าเหล่านี้ในหัวข้อ "Setup LINE Developers Console" ด้านล่าง)
+
+ถ้าโปรเจกต์เชื่อม Vercel ไว้แล้ว (`vercel link`) ให้ดึงตัวแปร Redis (`KV_REST_API_URL` ฯลฯ) มาต่อท้าย `.env.local` ด้วยคำสั่งนี้ (ระวัง: คำสั่งนี้จะ**เขียนทับ** `.env.local` ทั้งไฟล์ ให้สำรอง `LINE_CHANNEL_SECRET`/`LINE_CHANNEL_ACCESS_TOKEN` ไว้ก่อนแล้วใส่กลับเข้าไปหลังรัน):
+
+```bash
+vercel env pull .env.local
+```
+
+แล้วรัน dev server:
 
 ```bash
 npm run dev

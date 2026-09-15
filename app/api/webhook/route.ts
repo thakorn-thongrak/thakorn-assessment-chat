@@ -28,12 +28,12 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    addMessage(userId, "incoming", content);
+    await addMessage(userId, "incoming", content);
 
-    if (!hasProfile(userId)) {
+    if (!(await hasProfile(userId))) {
       try {
         const profile = await getProfile(userId);
-        if (profile) setProfile(userId, profile);
+        if (profile) await setProfile(userId, profile);
       } catch (err) {
         console.error("Failed to fetch LINE profile:", err);
       }

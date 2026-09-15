@@ -1,14 +1,18 @@
 /**
- * In-memory message store, keyed by LINE userId.
+ * Message store backed by Upstash Redis (provisioned via the Vercel
+ * Marketplace "Upstash for Redis" integration, free tier).
  *
- * This is process-local: on Vercel every serverless invocation can land on a
- * different (or cold) instance, so messages can appear to "disappear" across
- * requests. It's fine for local dev and quick demos. Once you need messages
- * to survive across invocations/regions, swap this module for Vercel KV
- * (Upstash Redis) — same function signatures, just backed by `kv.rpush` /
- * `kv.lrange` instead of an in-memory array. Do that as soon as you deploy
- * to Vercel and need the webhook and polling routes to reliably share state.
+ * Data model:
+ * - `messages:{userId}` — a Redis list of ChatMessage, oldest first (RPUSH).
+ * - `conversations`     — a sorted set of userIds, scored by last message
+ *   time, so the conversation list can be read back most-recent-first.
+ * - `profile:{userId}`  — the cached LINE display name/avatar for that user.
+ * - `message:next_id`   — a counter (INCR) for globally unique message ids.
  */
+
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
 
 export type MessageDirection = "incoming" | "outgoing";
 
@@ -35,49 +39,51 @@ export interface ConversationSummary {
   lastMessage: ChatMessage;
 }
 
-const messagesByUser = new Map<string, ChatMessage[]>();
-const profileByUser = new Map<string, ConversationProfile>();
-let nextId = 1;
-
-export function addMessage(
+export async function addMessage(
   userId: string,
   direction: MessageDirection,
   content: MessageContent
-): ChatMessage {
-  const message: ChatMessage = {
-    id: String(nextId++),
-    userId,
-    direction,
-    content,
-    timestamp: Date.now(),
-  };
-  const existing = messagesByUser.get(userId) ?? [];
-  existing.push(message);
-  messagesByUser.set(userId, existing);
+): Promise<ChatMessage> {
+  const id = String(await redis.incr("message:next_id"));
+  const message: ChatMessage = { id, userId, direction, content, timestamp: Date.now() };
+
+  await Promise.all([
+    redis.rpush(`messages:${userId}`, message),
+    redis.zadd("conversations", { score: message.timestamp, member: userId }),
+  ]);
+
   return message;
 }
 
-export function getMessages(userId: string, afterId?: string): ChatMessage[] {
-  const all = messagesByUser.get(userId) ?? [];
+export async function getMessages(userId: string, afterId?: string): Promise<ChatMessage[]> {
+  const all = await redis.lrange<ChatMessage>(`messages:${userId}`, 0, -1);
   if (!afterId) return all;
   const afterIndex = all.findIndex((m) => m.id === afterId);
   return afterIndex === -1 ? all : all.slice(afterIndex + 1);
 }
 
-export function setProfile(userId: string, profile: ConversationProfile): void {
-  profileByUser.set(userId, profile);
+export async function setProfile(userId: string, profile: ConversationProfile): Promise<void> {
+  await redis.set(`profile:${userId}`, profile);
 }
 
-export function hasProfile(userId: string): boolean {
-  return profileByUser.has(userId);
+export async function hasProfile(userId: string): Promise<boolean> {
+  return (await redis.exists(`profile:${userId}`)) === 1;
 }
 
-export function listConversations(): ConversationSummary[] {
-  const summaries: ConversationSummary[] = [];
-  for (const [userId, messages] of messagesByUser) {
-    const lastMessage = messages[messages.length - 1];
-    if (!lastMessage) continue;
-    summaries.push({ userId, profile: profileByUser.get(userId) ?? null, lastMessage });
-  }
-  return summaries.sort((a, b) => b.lastMessage.timestamp - a.lastMessage.timestamp);
+export async function listConversations(): Promise<ConversationSummary[]> {
+  const userIds = await redis.zrange<string[]>("conversations", 0, -1, { rev: true });
+
+  const summaries = await Promise.all(
+    userIds.map(async (userId): Promise<ConversationSummary | null> => {
+      const [profile, lastMessages] = await Promise.all([
+        redis.get<ConversationProfile>(`profile:${userId}`),
+        redis.lrange<ChatMessage>(`messages:${userId}`, -1, -1),
+      ]);
+      const lastMessage = lastMessages[0];
+      if (!lastMessage) return null;
+      return { userId, profile: profile ?? null, lastMessage };
+    })
+  );
+
+  return summaries.filter((s): s is ConversationSummary => s !== null);
 }

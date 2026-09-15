@@ -33,6 +33,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "failed to send message to LINE" }, { status: 502 });
   }
 
-  const message = addMessage(userId, "outgoing", content);
+  const message = await addMessage(userId, "outgoing", content);
   return NextResponse.json({ message });
 }
