@@ -10,6 +10,17 @@ interface ChatMessage {
   timestamp: number;
 }
 
+interface ConversationProfile {
+  displayName: string;
+  pictureUrl?: string;
+}
+
+interface ConversationSummary {
+  userId: string;
+  profile: ConversationProfile | null;
+  lastMessage: ChatMessage;
+}
+
 const POLL_INTERVAL_MS = 2500;
 const STORAGE_KEY = "line-webchat-user-id";
 
@@ -20,8 +31,9 @@ function readSavedUserId(): string {
 
 export default function Home() {
   const [lineUserId, setLineUserId] = useState(readSavedUserId);
+  const [showManualInput, setShowManualInput] = useState(false);
 
-  function handleUserIdChange(value: string) {
+  function selectUserId(value: string) {
     const next = value.trim();
     setLineUserId(next);
     localStorage.setItem(STORAGE_KEY, next);
@@ -29,33 +41,117 @@ export default function Home() {
 
   return (
     <div className="flex flex-1 items-center justify-center p-4">
-      <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-lg" style={{ height: "min(720px, 90vh)" }}>
-        <header className="flex items-center gap-3 bg-emerald-600 px-4 py-3 text-white">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-emerald-600 font-bold">
-            L
-          </div>
-          <div>
-            <p className="font-semibold leading-tight">LINE Webchat</p>
-            <p className="text-xs text-emerald-100 leading-tight">เชื่อมต่อกับ LINE Official Account</p>
-          </div>
-        </header>
+      <div
+        className="flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-lg md:flex-row"
+        style={{ height: "min(720px, 90vh)" }}
+      >
+        <aside className="flex w-full flex-col border-b border-emerald-100 md:w-72 md:shrink-0 md:border-b-0 md:border-r">
+          <header className="flex items-center gap-3 bg-emerald-600 px-4 py-3 text-white">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-emerald-600 font-bold">
+              L
+            </div>
+            <div>
+              <p className="font-semibold leading-tight">LINE Webchat</p>
+              <p className="text-xs text-emerald-100 leading-tight">เชื่อมต่อกับ LINE Official Account</p>
+            </div>
+          </header>
 
-        <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-2">
-          <label className="block text-xs font-medium text-emerald-800 mb-1">
-            LINE userId ที่จะคุยด้วย
-          </label>
-          <input
-            type="text"
-            defaultValue={lineUserId}
-            onChange={(e) => handleUserIdChange(e.target.value)}
-            placeholder="เช่น U1234567890abcdef..."
-            className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-sm text-gray-900 outline-none focus:border-emerald-500"
-          />
+          <ConversationList selectedUserId={lineUserId} onSelect={selectUserId} />
+
+          <div className="border-t border-emerald-100 bg-emerald-50 px-4 py-2">
+            <button
+              onClick={() => setShowManualInput((v) => !v)}
+              className="text-xs font-medium text-emerald-700 hover:underline"
+            >
+              {showManualInput ? "ซ่อนช่องกรอก userId" : "+ เริ่มแชทด้วย userId เอง"}
+            </button>
+            {showManualInput && (
+              <input
+                type="text"
+                defaultValue={lineUserId}
+                onChange={(e) => selectUserId(e.target.value)}
+                placeholder="เช่น U1234567890abcdef..."
+                className="mt-2 w-full rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-sm text-gray-900 outline-none focus:border-emerald-500"
+              />
+            )}
+          </div>
+        </aside>
+
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <ChatSession key={lineUserId} lineUserId={lineUserId} />
         </div>
-
-        <ChatSession key={lineUserId} lineUserId={lineUserId} />
       </div>
     </div>
+  );
+}
+
+function ConversationList({
+  selectedUserId,
+  onSelect,
+}: {
+  selectedUserId: string;
+  onSelect: (userId: string) => void;
+}) {
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const res = await fetch("/api/conversations");
+        if (!res.ok) throw new Error("Failed to fetch conversations");
+        const data: { conversations: ConversationSummary[] } = await res.json();
+        if (!cancelled) setConversations(data.conversations);
+      } catch {
+        // Silently retry on the next poll tick.
+      }
+    }
+
+    poll();
+    const interval = setInterval(poll, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  if (conversations.length === 0) {
+    return (
+      <p className="flex-1 px-4 py-6 text-center text-sm text-gray-400">
+        ยังไม่มีคนทักเข้ามาใน LINE OA
+      </p>
+    );
+  }
+
+  return (
+    <ul className="flex-1 overflow-y-auto">
+      {conversations.map((c) => (
+        <li key={c.userId}>
+          <button
+            onClick={() => onSelect(c.userId)}
+            className={`flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-emerald-50 ${
+              c.userId === selectedUserId ? "bg-emerald-100" : ""
+            }`}
+          >
+            {c.profile?.pictureUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={c.profile.pictureUrl} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+            ) : (
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-200 text-sm font-semibold text-emerald-700">
+                {(c.profile?.displayName ?? c.userId).slice(0, 1).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-gray-800">
+                {c.profile?.displayName ?? c.userId}
+              </p>
+              <p className="truncate text-xs text-gray-400">{c.lastMessage.text}</p>
+            </div>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -134,7 +230,7 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-[repeating-linear-gradient(0deg,#f0fdf4,#f0fdf4_40px)] px-4 py-4">
         {!lineUserId && (
           <p className="mt-6 text-center text-sm text-gray-400">
-            กรอก LINE userId ด้านบนเพื่อเริ่มแชท
+            เลือกการสนทนาทางซ้าย หรือกรอก LINE userId เพื่อเริ่มแชท
           </p>
         )}
         {lineUserId && messages.length === 0 && (

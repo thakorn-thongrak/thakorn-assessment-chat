@@ -20,7 +20,19 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export interface ConversationProfile {
+  displayName: string;
+  pictureUrl?: string;
+}
+
+export interface ConversationSummary {
+  userId: string;
+  profile: ConversationProfile | null;
+  lastMessage: ChatMessage;
+}
+
 const messagesByUser = new Map<string, ChatMessage[]>();
+const profileByUser = new Map<string, ConversationProfile>();
 let nextId = 1;
 
 export function addMessage(
@@ -46,4 +58,22 @@ export function getMessages(userId: string, afterId?: string): ChatMessage[] {
   if (!afterId) return all;
   const afterIndex = all.findIndex((m) => m.id === afterId);
   return afterIndex === -1 ? all : all.slice(afterIndex + 1);
+}
+
+export function setProfile(userId: string, profile: ConversationProfile): void {
+  profileByUser.set(userId, profile);
+}
+
+export function hasProfile(userId: string): boolean {
+  return profileByUser.has(userId);
+}
+
+export function listConversations(): ConversationSummary[] {
+  const summaries: ConversationSummary[] = [];
+  for (const [userId, messages] of messagesByUser) {
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage) continue;
+    summaries.push({ userId, profile: profileByUser.get(userId) ?? null, lastMessage });
+  }
+  return summaries.sort((a, b) => b.lastMessage.timestamp - a.lastMessage.timestamp);
 }

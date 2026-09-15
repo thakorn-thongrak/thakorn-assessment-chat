@@ -69,6 +69,21 @@ export async function pushMessage(userId: string, text: string): Promise<void> {
   }
 }
 
+export interface LineProfile {
+  displayName: string;
+  pictureUrl?: string;
+}
+
+export async function getProfile(userId: string): Promise<LineProfile | null> {
+  const res = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+    headers: { Authorization: `Bearer ${getAccessToken()}` },
+  });
+
+  if (!res.ok) return null;
+  const data = await res.json();
+  return { displayName: data.displayName, pictureUrl: data.pictureUrl };
+}
+
 export interface LineWebhookEvent {
   type: string;
   replyToken?: string;

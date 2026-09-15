@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifySignature, replyMessage, type LineWebhookBody } from "@/lib/line";
-import { addMessage } from "@/lib/store";
+import { verifySignature, replyMessage, getProfile, type LineWebhookBody } from "@/lib/line";
+import { addMessage, hasProfile, setProfile } from "@/lib/store";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -20,6 +20,15 @@ export async function POST(req: NextRequest) {
     if (!userId || !text) continue;
 
     addMessage(userId, "incoming", text);
+
+    if (!hasProfile(userId)) {
+      try {
+        const profile = await getProfile(userId);
+        if (profile) setProfile(userId, profile);
+      } catch (err) {
+        console.error("Failed to fetch LINE profile:", err);
+      }
+    }
 
     if (event.replyToken) {
       try {
