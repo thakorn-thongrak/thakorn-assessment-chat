@@ -35,25 +35,6 @@ export type OutboundMessage =
   | { type: "text"; text: string }
   | { type: "sticker"; packageId: string; stickerId: string };
 
-export async function replyMessage(replyToken: string, message: OutboundMessage): Promise<void> {
-  const res = await fetch(`${LINE_API_BASE}/reply`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getAccessToken()}`,
-    },
-    body: JSON.stringify({
-      replyToken,
-      messages: [message],
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`LINE reply failed: ${res.status} ${body}`);
-  }
-}
-
 export async function pushMessage(userId: string, message: OutboundMessage): Promise<void> {
   const res = await fetch(`${LINE_API_BASE}/push`, {
     method: "POST",

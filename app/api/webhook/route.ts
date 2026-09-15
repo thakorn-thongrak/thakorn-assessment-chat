@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  verifySignature,
-  replyMessage,
-  getProfile,
-  type LineWebhookBody,
-  type OutboundMessage,
-} from "@/lib/line";
+import { verifySignature, getProfile, type LineWebhookBody } from "@/lib/line";
 import { addMessage, hasProfile, setProfile, type MessageContent } from "@/lib/store";
 
 export async function POST(req: NextRequest) {
@@ -25,14 +19,11 @@ export async function POST(req: NextRequest) {
     if (!userId) continue;
 
     let content: MessageContent;
-    let ack: OutboundMessage;
 
     if (event.message.type === "text" && event.message.text) {
       content = { type: "text", text: event.message.text };
-      ack = { type: "text", text: `ได้รับข้อความแล้ว: ${event.message.text}` };
     } else if (event.message.type === "sticker" && event.message.packageId && event.message.stickerId) {
       content = { type: "sticker", packageId: event.message.packageId, stickerId: event.message.stickerId };
-      ack = { type: "text", text: "ได้รับสติกเกอร์แล้ว" };
     } else {
       continue;
     }
@@ -45,14 +36,6 @@ export async function POST(req: NextRequest) {
         if (profile) setProfile(userId, profile);
       } catch (err) {
         console.error("Failed to fetch LINE profile:", err);
-      }
-    }
-
-    if (event.replyToken) {
-      try {
-        await replyMessage(event.replyToken, ack);
-      } catch (err) {
-        console.error("Failed to reply:", err);
       }
     }
   }
