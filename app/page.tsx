@@ -52,49 +52,7 @@ function readSavedUserId(): string {
 
 export default function Home() {
   const [lineUserId, setLineUserId] = useState(readSavedUserId);
-
-  function selectUserId(value: string) {
-    const next = value.trim();
-    setLineUserId(next);
-    localStorage.setItem(STORAGE_KEY, next);
-  }
-
-  return (
-    <div className="flex flex-1 items-center justify-center p-4">
-      <div
-        className="flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-lg md:flex-row"
-        style={{ height: "min(720px, 90vh)" }}
-      >
-        <aside className="flex w-full flex-col border-b border-emerald-100 md:w-72 md:shrink-0 md:border-b-0 md:border-r">
-          <header className="flex items-center gap-3 bg-emerald-600 px-4 py-3 text-white">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-emerald-600 font-bold">
-              L
-            </div>
-            <div>
-              <p className="font-semibold leading-tight">LINE Webchat</p>
-              <p className="text-xs text-emerald-100 leading-tight">เชื่อมต่อกับ LINE Official Account</p>
-            </div>
-          </header>
-
-          <ConversationList selectedUserId={lineUserId} onSelect={selectUserId} />
-        </aside>
-
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <ChatSession key={lineUserId} lineUserId={lineUserId} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ConversationList({
-  selectedUserId,
-  onSelect,
-}: {
-  selectedUserId: string;
-  onSelect: (userId: string) => void;
-}) {
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,7 +76,64 @@ function ConversationList({
     };
   }, []);
 
-  if (conversations.length === 0) {
+  // A userId remembered from a previous visit may no longer be a real,
+  // known conversation (e.g. the in-memory store reset after a redeploy) —
+  // drop it once the list loads so the chat can't be "open" with nobody
+  // actually selected.
+  useEffect(() => {
+    if (conversations === null || !lineUserId) return;
+    if (!conversations.some((c) => c.userId === lineUserId)) {
+      selectUserId("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations]);
+
+  function selectUserId(value: string) {
+    const next = value.trim();
+    setLineUserId(next);
+    localStorage.setItem(STORAGE_KEY, next);
+  }
+
+  const isValidSelection = lineUserId !== "" && (conversations?.some((c) => c.userId === lineUserId) ?? false);
+
+  return (
+    <div className="flex flex-1 items-center justify-center p-4">
+      <div
+        className="flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-lg md:flex-row"
+        style={{ height: "min(720px, 90vh)" }}
+      >
+        <aside className="flex w-full flex-col border-b border-emerald-100 md:w-72 md:shrink-0 md:border-b-0 md:border-r">
+          <header className="flex items-center gap-3 bg-emerald-600 px-4 py-3 text-white">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-emerald-600 font-bold">
+              L
+            </div>
+            <div>
+              <p className="font-semibold leading-tight">LINE Webchat</p>
+              <p className="text-xs text-emerald-100 leading-tight">เชื่อมต่อกับ LINE Official Account</p>
+            </div>
+          </header>
+
+          <ConversationList conversations={conversations} selectedUserId={lineUserId} onSelect={selectUserId} />
+        </aside>
+
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <ChatSession key={lineUserId} lineUserId={isValidSelection ? lineUserId : ""} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConversationList({
+  conversations,
+  selectedUserId,
+  onSelect,
+}: {
+  conversations: ConversationSummary[] | null;
+  selectedUserId: string;
+  onSelect: (userId: string) => void;
+}) {
+  if (!conversations || conversations.length === 0) {
     return (
       <p className="flex-1 px-4 py-6 text-center text-sm text-gray-400">
         ยังไม่มีคนทักเข้ามาใน LINE OA
