@@ -301,6 +301,21 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
     await sendContent({ type: "sticker", packageId, stickerId });
   }
 
+  async function deleteMessage(id: string) {
+    setError(null);
+    try {
+      const params = new URLSearchParams({ userId: lineUserId, id });
+      const res = await fetch(`/api/messages?${params.toString()}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to delete message");
+      }
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete message");
+    }
+  }
+
   return (
     <>
       <div
@@ -317,49 +332,68 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
             ยังไม่มีข้อความ
           </p>
         )}
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`flex ${m.direction === "outgoing" ? "justify-end" : "justify-start"}`}
-          >
-            {m.content.type === "sticker" ? (
-              <div className="flex flex-col items-end">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={stickerImageUrl(m.content.stickerId)}
-                  alt="sticker"
-                  className="h-24 w-24"
-                />
-                <p className="mt-0.5 text-[10px] text-gray-400">
-                  {new Date(m.timestamp).toLocaleTimeString("th-TH", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </p>
-              </div>
-            ) : (
-              <div
-                className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm shadow-sm ${
-                  m.direction === "outgoing"
-                    ? "bg-emerald-500 text-white rounded-br-sm"
-                    : "bg-white text-gray-800 border border-gray-200 rounded-bl-sm"
-                }`}
-              >
-                <p className="whitespace-pre-wrap break-words">
-                  {m.content.text}
-                </p>
-                <p
-                  className={`mt-1 text-[10px] ${m.direction === "outgoing" ? "text-emerald-100" : "text-gray-400"}`}
+        {messages.map((m) => {
+          const time = new Date(m.timestamp).toLocaleTimeString("th-TH", {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+          return (
+            <div
+              key={m.id}
+              className={`group flex items-end gap-1.5 ${m.direction === "outgoing" ? "justify-end" : "justify-start"}`}
+            >
+              {m.direction === "outgoing" && (
+                <button
+                  onClick={() => deleteMessage(m.id)}
+                  title="ลบออกจากเว็บนี้ (ไม่กระทบข้อความในแอป LINE ของคู่สนทนา)"
+                  className="mb-1 hidden shrink-0 rounded-full px-1.5 py-0.5 text-xs text-gray-400 hover:bg-gray-100 hover:text-red-500 group-hover:inline-block"
                 >
-                  {new Date(m.timestamp).toLocaleTimeString("th-TH", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </p>
-              </div>
-            )}
-          </div>
-        ))}
+                  ลบ
+                </button>
+              )}
+
+              {m.content.type === "sticker" ? (
+                <div className="flex flex-col items-end">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={stickerImageUrl(m.content.stickerId)}
+                    alt="sticker"
+                    className="h-24 w-24"
+                  />
+                  <p className="mt-0.5 text-[10px] text-gray-400">{time}</p>
+                </div>
+              ) : (
+                <div
+                  className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm shadow-sm ${
+                    m.direction === "outgoing"
+                      ? "bg-emerald-500 text-white rounded-br-sm"
+                      : "bg-white text-gray-800 border border-gray-200 rounded-bl-sm"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap break-words">
+                    {m.content.text}
+                  </p>
+                  <p
+                    className={`mt-1 text-[10px] ${m.direction === "outgoing" ? "text-emerald-100" : "text-gray-400"}`}
+                  >
+                    {time}
+                  </p>
+                </div>
+              )}
+
+              {m.direction === "incoming" && (
+                <button
+                  onClick={() => deleteMessage(m.id)}
+                  title="ลบออกจากเว็บนี้ (ไม่กระทบข้อความในแอป LINE ของคู่สนทนา)"
+                  className="mb-1 hidden shrink-0 rounded-full px-1.5 py-0.5 text-xs text-gray-400 hover:bg-gray-100 hover:text-red-500 group-hover:inline-block"
+                >
+                  ลบ
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {error && <p className="px-4 pt-1 text-xs text-red-500">{error}</p>}

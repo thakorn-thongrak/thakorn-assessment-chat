@@ -55,6 +55,27 @@ export async function addMessage(
   return message;
 }
 
+/**
+ * Removes a message from our own webchat history only — this has no effect
+ * on LINE itself (there's no API for an OA to unsend a message it sent; the
+ * only way a message ever disappears on LINE's side is the user doing it
+ * themselves, in their own app).
+ */
+export async function deleteMessage(userId: string, id: string): Promise<boolean> {
+  const key = `messages:${userId}`;
+  const all = await redis.lrange<ChatMessage>(key, 0, -1);
+  const remaining = all.filter((m) => m.id !== id);
+  if (remaining.length === all.length) return false;
+
+  await redis.del(key);
+  if (remaining.length > 0) {
+    await redis.rpush(key, ...remaining);
+  } else {
+    await redis.zrem("conversations", userId);
+  }
+  return true;
+}
+
 export async function getMessages(userId: string, afterId?: string): Promise<ChatMessage[]> {
   const all = await redis.lrange<ChatMessage>(`messages:${userId}`, 0, -1);
   if (!afterId) return all;

@@ -21,11 +21,13 @@
 
 รองรับ **สติกเกอร์ LINE** ทั้งสองทิศทาง: ถ้า user ส่งสติกเกอร์มาทาง LINE, webhook จะเก็บ `packageId`/`stickerId` ไว้แล้วแสดงเป็นรูปสติกเกอร์ในหน้าเว็บ (ใช้ URL รูปแบบ `https://stickershop.line-scdn.net/stickershop/v1/sticker/{stickerId}/android/sticker.png` ที่ LINE เปิดให้เรียกได้สาธารณะสำหรับ sticker id ใดก็ได้) ส่วนฝั่งแอดมินมีปุ่มสติกเกอร์ (ไอคอนหน้ายิ้ม) ให้เลือกจากชุดสติกเกอร์ตัวอย่างส่งกลับไปหา user ได้เช่นกัน
 
+แต่ละ bubble มีปุ่ม **"ลบ"** (โผล่ตอน hover) ให้ลบข้อความออกจาก `DELETE /api/messages` ได้ — **ลบได้แค่ฝั่ง webchat ของเราเท่านั้น ไม่กระทบข้อความในแอป LINE ของอีกฝั่งเลย** เพราะ LINE Messaging API ไม่มี endpoint ให้ OA/bot สั่งเรียกคืน (unsend) ข้อความที่ตัวเองส่งไปแล้ว ("unsend" ของ LINE เป็นแค่ webhook event แจ้งเตือนเวลา *user* เรียกคืนข้อความของตัวเองในแอป ไม่ใช่ API สำหรับ bot) ปุ่มนี้จึงเหมาะกับกรณีอยากเคลียร์ประวัติที่พิมพ์ผิด/ไม่เกี่ยวข้องออกจากหน้าแอดมินเท่านั้น
+
 ## โครงสร้างโปรเจกต์และไฟล์สำคัญ
 
 - `app/page.tsx` — หน้า UI หลักของ webchat เขียนด้วย React (client component) แบ่งเป็น sidebar แสดงรายชื่อ/รูปคนที่เคยทักเข้ามา (`ConversationList`, ดึงจาก `/api/conversations` ทุก 2.5 วินาที) กับพื้นที่แชทหลัก (`ChatSession`) ที่แสดงข้อความ/สติกเกอร์เป็น chat bubble แยกสีตามทิศทาง พร้อมช่อง input และปุ่มสติกเกอร์ `ChatSession` จะ mount ใหม่ทุกครั้งที่เปลี่ยน userId ที่เลือก เพื่อให้ state ของแต่ละบทสนทนาสะอาดและไม่ปนกัน
 - `app/api/webhook/route.ts` — route handler รับ POST จาก LINE, verify signature, แกะ event (ข้อความหรือสติกเกอร์), บันทึกข้อความ, ดึงโปรไฟล์ผู้ส่งมาเก็บ (ถ้ายังไม่เคยเก็บ), และ reply กลับอัตโนมัติ
-- `app/api/messages/route.ts` — route handler แบบ GET ให้หน้าเว็บ polling ดึงข้อความใหม่ตาม userId
+- `app/api/messages/route.ts` — route handler มี GET ให้หน้าเว็บ polling ดึงข้อความใหม่ตาม userId และ DELETE ให้ลบข้อความออกจาก store ของเรา (ไม่กระทบฝั่ง LINE)
 - `app/api/push/route.ts` — route handler แบบ POST รับ `userId` + `content` (ข้อความหรือสติกเกอร์) จากหน้าเว็บแล้วส่งต่อไปยัง LINE Push API
 - `app/api/conversations/route.ts` — route handler แบบ GET คืนรายชื่อการสนทนาทั้งหมด (userId, โปรไฟล์, ข้อความล่าสุด) เรียงตามเวลาล่าสุดก่อน ให้ sidebar ใช้แสดงผล
 - `lib/line.ts` — รวมฟังก์ชัน helper สำหรับคุยกับ LINE: `verifySignature` (ตรวจสอบ webhook signature), `replyMessage`/`pushMessage` (ส่งข้อความหรือสติกเกอร์ผ่าน reply token หรือแบบ proactive), `getProfile` (ดึงชื่อ/รูปโปรไฟล์ผู้ใช้), และ `stickerImageUrl` (สร้าง URL รูปสติกเกอร์จาก sticker id) รวมถึง type definition ของ webhook event ที่ LINE ส่งมา
