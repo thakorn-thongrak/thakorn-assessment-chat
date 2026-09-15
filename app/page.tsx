@@ -31,7 +31,6 @@ function readSavedUserId(): string {
 
 export default function Home() {
   const [lineUserId, setLineUserId] = useState(readSavedUserId);
-  const [showManualInput, setShowManualInput] = useState(false);
 
   function selectUserId(value: string) {
     const next = value.trim();
@@ -57,24 +56,6 @@ export default function Home() {
           </header>
 
           <ConversationList selectedUserId={lineUserId} onSelect={selectUserId} />
-
-          <div className="border-t border-emerald-100 bg-emerald-50 px-4 py-2">
-            <button
-              onClick={() => setShowManualInput((v) => !v)}
-              className="text-xs font-medium text-emerald-700 hover:underline"
-            >
-              {showManualInput ? "ซ่อนช่องกรอก userId" : "+ เริ่มแชทด้วย userId เอง"}
-            </button>
-            {showManualInput && (
-              <input
-                type="text"
-                defaultValue={lineUserId}
-                onChange={(e) => selectUserId(e.target.value)}
-                placeholder="เช่น U1234567890abcdef..."
-                className="mt-2 w-full rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-sm text-gray-900 outline-none focus:border-emerald-500"
-              />
-            )}
-          </div>
         </aside>
 
         <div className="flex flex-1 flex-col overflow-hidden">
@@ -230,7 +211,7 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-[repeating-linear-gradient(0deg,#f0fdf4,#f0fdf4_40px)] px-4 py-4">
         {!lineUserId && (
           <p className="mt-6 text-center text-sm text-gray-400">
-            เลือกการสนทนาทางซ้าย หรือกรอก LINE userId เพื่อเริ่มแชท
+            เลือกการสนทนาทางซ้ายเพื่อเริ่มแชท
           </p>
         )}
         {lineUserId && messages.length === 0 && (
