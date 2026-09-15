@@ -4,8 +4,10 @@
 
 ระบบถูกออกแบบให้ทำงานสองทิศทาง (bidirectional):
 
-- **จากเว็บไปหา LINE** — ผู้ใช้พิมพ์ข้อความในหน้าเว็บ กดส่ง ระบบจะยิง request ไปยัง LINE Push Message API เพื่อส่งข้อความนั้นเข้าไปหา LINE userId ที่ระบุไว้
-- **จาก LINE กลับมาที่เว็บ** — เมื่อผู้ใช้พิมพ์ข้อความเข้ามาที่ LINE OA, LINE จะยิง webhook event มาที่ backend ของเรา ระบบจะตรวจสอบความถูกต้องของ request (verify signature) แล้วเก็บข้อความนั้นไว้ ฝั่งหน้าเว็บจะ polling (ดึงข้อมูลซ้ำเป็นช่วงๆ) ไปถามทุก ๆ 2.5 วินาทีว่ามีข้อความใหม่หรือไม่ แล้วนำมาแสดงเป็น chat bubble แบบเรียลไทม์
+- **จากเว็บไปหา LINE** — แอดมินเลือกการสนทนาจาก sidebar แล้วพิมพ์ข้อความหรือเลือกสติกเกอร์ กดส่ง ระบบจะยิง request ไปยัง LINE Push Message API เพื่อส่งข้อความนั้นเข้าไปหา LINE userId ของคู่สนทนา
+- **จาก LINE กลับมาที่เว็บ** — เมื่อผู้ใช้พิมพ์ข้อความ (หรือส่งสติกเกอร์) เข้ามาที่ LINE OA, LINE จะยิง webhook event มาที่ backend ของเรา ระบบจะตรวจสอบความถูกต้องของ request (verify signature) แล้วเก็บข้อความนั้นไว้ ฝั่งหน้าเว็บจะ polling (ดึงข้อมูลซ้ำเป็นช่วงๆ) ไปถามทุก ๆ 2.5 วินาทีว่ามีข้อความใหม่หรือไม่ แล้วนำมาแสดงเป็น chat bubble แบบเรียลไทม์
+
+**ข้อจำกัดสำคัญของ LINE ที่ต้องเข้าใจก่อนใช้งาน:** LINE ไม่มี API ให้แปลง LINE ID (`@handle` ที่คนตั้งเอง) เป็น userId ได้ (ตั้งใจปิดกั้นเพื่อความเป็นส่วนตัว) วิธีเดียวที่ระบบจะรู้จัก userId ของใครสักคนคือ **ผู้ใช้ต้องเป็นฝ่ายแอดเพื่อนแล้วทักเข้ามาหา LINE OA ก่อนเสมอ** เว็บนี้จึงไม่มีช่องให้พิมพ์ userId เอง — พอมีคนทักเข้ามา ระบบจะเก็บ userId พร้อมดึงชื่อ/รูปโปรไฟล์จริงมาโชว์ใน sidebar ให้แอดมินกดเลือกคุยต่อได้ทันที
 
 ## การทำงานเบื้องหลัง (How it works)
 
@@ -13,16 +15,19 @@
 
 ฝั่งหน้าเว็บจะมี endpoint `/api/messages` ที่รับ query parameter เป็น `userId` (และ `after` สำหรับระบุว่าจะดึงเฉพาะข้อความที่มาใหม่กว่า id ที่ระบุ) หน้าเว็บจะเรียก endpoint นี้ซ้ำ ๆ ทุก 2.5 วินาทีเพื่อดึงข้อความใหม่มาต่อท้ายในหน้าจอแชท เป็นการจำลองพฤติกรรมเรียลไทม์แบบง่าย ๆ โดยไม่ต้องใช้ WebSocket หรือ Server-Sent Events
 
-เมื่อผู้ใช้ฝั่งเว็บพิมพ์ข้อความแล้วกดส่ง หน้าเว็บจะยิง POST ไปที่ `/api/push` พร้อมกับ `userId` ปลายทางและข้อความ ระบบฝั่ง backend จะเรียก LINE Push Message API เพื่อส่งข้อความไปหาผู้ใช้คนนั้นโดยตรง (ไม่ผ่าน reply token เพราะเป็นการส่งแบบ proactive ไม่ใช่การตอบกลับ event เดิม) หากส่งสำเร็จจะบันทึกข้อความนั้นไว้ในสถานะ "outgoing" เพื่อให้แสดงเป็น chat bubble ฝั่งขวาในหน้าเว็บด้วย
+เมื่อแอดมินฝั่งเว็บพิมพ์ข้อความ (หรือเลือกสติกเกอร์) แล้วกดส่ง หน้าเว็บจะยิง POST ไปที่ `/api/push` พร้อมกับ `userId` ปลายทางและ `content` (เนื้อหาข้อความ อาจเป็น `{type:"text",text}` หรือ `{type:"sticker",packageId,stickerId}`) ระบบฝั่ง backend จะเรียก LINE Push Message API เพื่อส่งไปหาผู้ใช้คนนั้นโดยตรง (ไม่ผ่าน reply token เพราะเป็นการส่งแบบ proactive ไม่ใช่การตอบกลับ event เดิม) หากส่งสำเร็จจะบันทึกไว้ในสถานะ "outgoing" เพื่อให้แสดงเป็น chat bubble ฝั่งขวาในหน้าเว็บด้วย
+
+รองรับ **สติกเกอร์ LINE** ทั้งสองทิศทาง: ถ้า user ส่งสติกเกอร์มาทาง LINE, webhook จะเก็บ `packageId`/`stickerId` ไว้แล้วแสดงเป็นรูปสติกเกอร์ในหน้าเว็บ (ใช้ URL รูปแบบ `https://stickershop.line-scdn.net/stickershop/v1/sticker/{stickerId}/android/sticker.png` ที่ LINE เปิดให้เรียกได้สาธารณะสำหรับ sticker id ใดก็ได้) ส่วนฝั่งแอดมินมีปุ่มสติกเกอร์ (ไอคอนหน้ายิ้ม) ให้เลือกจากชุดสติกเกอร์ตัวอย่างส่งกลับไปหา user ได้เช่นกัน
 
 ## โครงสร้างโปรเจกต์และไฟล์สำคัญ
 
-- `app/page.tsx` — หน้า UI หลักของ webchat เขียนด้วย React (client component) มีช่องกรอก LINE userId ที่จะคุยด้วย, พื้นที่แสดงข้อความแบบ chat bubble แยกสีตามทิศทาง (เขียวสำหรับข้อความที่ส่งออก, ขาวสำหรับข้อความที่รับเข้ามา), และช่อง input พร้อมปุ่มส่งข้อความ ส่วนของ session แชท (polling, ส่งข้อความ) ถูกแยกออกเป็น component ย่อย `ChatSession` ที่ mount ใหม่ทุกครั้งที่ userId เปลี่ยน เพื่อให้ state ของแต่ละบทสนทนาสะอาดและไม่ปนกัน
-- `app/api/webhook/route.ts` — route handler รับ POST จาก LINE, verify signature, แกะ event, บันทึกข้อความ, และ reply กลับอัตโนมัติ
+- `app/page.tsx` — หน้า UI หลักของ webchat เขียนด้วย React (client component) แบ่งเป็น sidebar แสดงรายชื่อ/รูปคนที่เคยทักเข้ามา (`ConversationList`, ดึงจาก `/api/conversations` ทุก 2.5 วินาที) กับพื้นที่แชทหลัก (`ChatSession`) ที่แสดงข้อความ/สติกเกอร์เป็น chat bubble แยกสีตามทิศทาง พร้อมช่อง input และปุ่มสติกเกอร์ `ChatSession` จะ mount ใหม่ทุกครั้งที่เปลี่ยน userId ที่เลือก เพื่อให้ state ของแต่ละบทสนทนาสะอาดและไม่ปนกัน
+- `app/api/webhook/route.ts` — route handler รับ POST จาก LINE, verify signature, แกะ event (ข้อความหรือสติกเกอร์), บันทึกข้อความ, ดึงโปรไฟล์ผู้ส่งมาเก็บ (ถ้ายังไม่เคยเก็บ), และ reply กลับอัตโนมัติ
 - `app/api/messages/route.ts` — route handler แบบ GET ให้หน้าเว็บ polling ดึงข้อความใหม่ตาม userId
-- `app/api/push/route.ts` — route handler แบบ POST รับข้อความจากหน้าเว็บแล้วส่งต่อไปยัง LINE Push API
-- `lib/line.ts` — รวมฟังก์ชัน helper สำหรับคุยกับ LINE: `verifySignature` (ตรวจสอบ webhook signature), `replyMessage` (ตอบกลับด้วย reply token), และ `pushMessage` (ส่งข้อความแบบ proactive ไปหา userId ที่ระบุ) รวมถึง type definition ของ webhook event ที่ LINE ส่งมา
-- `lib/store.ts` — ที่เก็บข้อความแบบ in-memory (ดูรายละเอียดและข้อควรระวังในหัวข้อถัดไป)
+- `app/api/push/route.ts` — route handler แบบ POST รับ `userId` + `content` (ข้อความหรือสติกเกอร์) จากหน้าเว็บแล้วส่งต่อไปยัง LINE Push API
+- `app/api/conversations/route.ts` — route handler แบบ GET คืนรายชื่อการสนทนาทั้งหมด (userId, โปรไฟล์, ข้อความล่าสุด) เรียงตามเวลาล่าสุดก่อน ให้ sidebar ใช้แสดงผล
+- `lib/line.ts` — รวมฟังก์ชัน helper สำหรับคุยกับ LINE: `verifySignature` (ตรวจสอบ webhook signature), `replyMessage`/`pushMessage` (ส่งข้อความหรือสติกเกอร์ผ่าน reply token หรือแบบ proactive), `getProfile` (ดึงชื่อ/รูปโปรไฟล์ผู้ใช้), และ `stickerImageUrl` (สร้าง URL รูปสติกเกอร์จาก sticker id) รวมถึง type definition ของ webhook event ที่ LINE ส่งมา
+- `lib/store.ts` — ที่เก็บข้อความและโปรไฟล์แบบ in-memory (ดูรายละเอียดและข้อควรระวังในหัวข้อถัดไป)
 
 ## เทคโนโลยีที่ใช้ (Tech stack)
 
@@ -42,10 +47,11 @@
 
 ## Environment variables
 
-โปรเจกต์ต้องการตัวแปรสภาพแวดล้อมสองตัวจาก LINE Developers Console:
+โปรเจกต์ต้องการตัวแปรสภาพแวดล้อมสามตัว:
 
-- `LINE_CHANNEL_SECRET` — ใช้ตรวจสอบ signature ของ webhook request ว่ามาจาก LINE จริง
-- `LINE_CHANNEL_ACCESS_TOKEN` — ใช้เป็น token สำหรับยืนยันตัวตนตอนเรียก Push/Reply Message API
+- `LINE_CHANNEL_SECRET` — จาก LINE Developers Console, ใช้ตรวจสอบ signature ของ webhook request ว่ามาจาก LINE จริง
+- `LINE_CHANNEL_ACCESS_TOKEN` — จาก LINE Developers Console, ใช้เป็น token สำหรับยืนยันตัวตนตอนเรียก Push/Reply Message API
+- `NEXT_PUBLIC_LINE_OA_ID` — Basic ID (`@handle`) ของ LINE OA นี้ เช่น `@831ltgzv` เป็นข้อมูลสาธารณะไม่ใช่ความลับ (ขึ้นต้นด้วย `NEXT_PUBLIC_` เพราะต้อง bundle ไปฝั่ง client เพื่อโชว์เป็นลิงก์/ข้อมูลแอดเพื่อนในหน้าเว็บได้)
 
 ดูตัวอย่างได้ที่ `.env.local.example`
 
@@ -56,7 +62,7 @@ npm install
 cp .env.local.example .env.local
 ```
 
-จากนั้นแก้ไฟล์ `.env.local` ใส่ค่า `LINE_CHANNEL_SECRET` และ `LINE_CHANNEL_ACCESS_TOKEN` ที่ได้จาก LINE Developers Console (ดูวิธีขอค่าเหล่านี้ในหัวข้อ "Setup LINE Developers Console" ด้านล่าง) แล้วรัน dev server:
+จากนั้นแก้ไฟล์ `.env.local` ใส่ค่า `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` และ `NEXT_PUBLIC_LINE_OA_ID` ที่ได้จาก LINE Developers Console (ดูวิธีขอค่าเหล่านี้ในหัวข้อ "Setup LINE Developers Console" ด้านล่าง) แล้วรัน dev server:
 
 ```bash
 npm run dev
@@ -74,17 +80,18 @@ npm run dev
 4. กรอกข้อมูลช่อง (channel icon, ชื่อ, หมวดหมู่ ฯลฯ) แล้วกดสร้าง
 5. เข้าไปที่ช่องที่สร้างขึ้น ไปที่แท็บ "Basic settings" แล้วคัดลอกค่า Channel secret เพื่อนำไปใช้เป็น `LINE_CHANNEL_SECRET`
 6. ไปที่แท็บ "Messaging API" เลื่อนลงมาที่ Channel access token แล้วกด Issue เพื่อออก long-lived token นำค่าที่ได้ไปใช้เป็น `LINE_CHANNEL_ACCESS_TOKEN` จากนั้นปิด Auto-reply messages และ Greeting messages ในเมนู LINE Official Account Manager > Response settings เพื่อไม่ให้ระบบตอบกลับอัตโนมัติของ LINE มาชนกับ webhook ของเรา แล้วเปิด Use webhook เป็น ON (ยังไม่ต้องใส่ Webhook URL ในขั้นตอนนี้ จะกลับมาใส่หลัง deploy เสร็จ)
-7. หา LINE userId ของตัวเองโดยเพิ่มเพื่อน LINE OA นี้ผ่าน QR code ที่อยู่ในหน้า Messaging API แล้วส่งข้อความทักไปหาสักครั้ง วิธีนี้จะทำให้ webhook ได้รับ event ที่มี `event.source.userId` ของเรา ซึ่งใช้กรอกในช่อง "LINE userId" ของหน้าเว็บได้
+7. ในหน้า Messaging API tab เดียวกัน จะเห็น **Basic ID** ของ OA (เช่น `@831ltgzv`) และ QR code — คัดลอก Basic ID ไปใช้เป็น `NEXT_PUBLIC_LINE_OA_ID`
+8. ทดสอบระบบโดยแอดเพื่อน LINE OA นี้เอง (สแกน QR code หรือค้นหา Basic ID ในแอป LINE) แล้วส่งข้อความทักไปหาสักครั้ง — คนอื่นก็ต้องแอดเพื่อนแล้วทักมาก่อนเหมือนกันถึงจะเริ่มแชทกับเว็บนี้ได้ เพราะ LINE ไม่อนุญาตให้ third-party ส่งข้อความหาใครก่อนโดยที่เขายังไม่เคยแอด/ทักมา พอทักมาแล้ว ระบบจะรู้จัก userId อัตโนมัติและโชว์ชื่อในหน้าเว็บให้เลย ไม่ต้องไปหา userId มากรอกเอง
 
 ## Deploy ขึ้น Vercel
 
 1. Push โค้ดขึ้น GitHub ก่อน (ดูขั้นตอนในหัวข้อถัดไป)
 2. ไปที่ https://vercel.com แล้วล็อกอินด้วยบัญชี GitHub
 3. กด "Add New... > Project" แล้วเลือก repository ของโปรเจกต์นี้
-4. ในหน้า Configure Project ระบบจะตรวจจับ Framework Preset เป็น Next.js โดยอัตโนมัติ ให้เปิดส่วน Environment Variables แล้วเพิ่มค่า `LINE_CHANNEL_SECRET` และ `LINE_CHANNEL_ACCESS_TOKEN` ตามค่าที่ได้จาก LINE console
+4. ในหน้า Configure Project ระบบจะตรวจจับ Framework Preset เป็น Next.js โดยอัตโนมัติ ให้เปิดส่วน Environment Variables แล้วเพิ่มค่า `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` และ `NEXT_PUBLIC_LINE_OA_ID` ตามค่าที่ได้จาก LINE console
 5. กด Deploy แล้วรอจน build เสร็จ จะได้ URL รูปแบบ `https://your-project.vercel.app`
 6. กลับไปที่ LINE Developers Console > Messaging API > Webhook settings แล้วใส่ Webhook URL เป็น `https://your-project.vercel.app/api/webhook` กด Verify เพื่อตรวจสอบว่า endpoint ตอบกลับ 200 ถูกต้อง และตรวจสอบให้แน่ใจว่า Use webhook เปิดเป็น ON
-7. เปิดเว็บที่ deploy แล้ว กรอก LINE userId ของตัวเอง แล้วลองพิมพ์คุยกับ LINE OA ข้อความควรวิ่งไปมาระหว่างเว็บและ LINE ได้ทั้งสองทาง
+7. เปิดเว็บที่ deploy แล้ว แอดเพื่อน LINE OA (ผ่าน Basic ID หรือ QR code) แล้วลองทักไปหาสักครั้ง — ชื่อของคุณควรโผล่ใน sidebar ของเว็บให้กดเข้าไปคุยต่อได้ ข้อความ/สติกเกอร์ควรวิ่งไปมาระหว่างเว็บและ LINE ได้ทั้งสองทาง
 
 ## Push ขึ้น GitHub (public repository)
 

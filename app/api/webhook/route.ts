@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifySignature, replyMessage, getProfile, type LineWebhookBody } from "@/lib/line";
-import { addMessage, hasProfile, setProfile } from "@/lib/store";
+import {
+  verifySignature,
+  replyMessage,
+  getProfile,
+  type LineWebhookBody,
+  type OutboundMessage,
+} from "@/lib/line";
+import { addMessage, hasProfile, setProfile, type MessageContent } from "@/lib/store";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -13,13 +19,25 @@ export async function POST(req: NextRequest) {
   const body: LineWebhookBody = JSON.parse(rawBody);
 
   for (const event of body.events ?? []) {
-    if (event.type !== "message" || event.message?.type !== "text") continue;
+    if (event.type !== "message" || !event.message) continue;
 
     const userId = event.source?.userId;
-    const text = event.message.text;
-    if (!userId || !text) continue;
+    if (!userId) continue;
 
-    addMessage(userId, "incoming", text);
+    let content: MessageContent;
+    let ack: OutboundMessage;
+
+    if (event.message.type === "text" && event.message.text) {
+      content = { type: "text", text: event.message.text };
+      ack = { type: "text", text: `ได้รับข้อความแล้ว: ${event.message.text}` };
+    } else if (event.message.type === "sticker" && event.message.packageId && event.message.stickerId) {
+      content = { type: "sticker", packageId: event.message.packageId, stickerId: event.message.stickerId };
+      ack = { type: "text", text: "ได้รับสติกเกอร์แล้ว" };
+    } else {
+      continue;
+    }
+
+    addMessage(userId, "incoming", content);
 
     if (!hasProfile(userId)) {
       try {
@@ -32,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     if (event.replyToken) {
       try {
-        await replyMessage(event.replyToken, `ได้รับข้อความแล้ว: ${text}`);
+        await replyMessage(event.replyToken, ack);
       } catch (err) {
         console.error("Failed to reply:", err);
       }

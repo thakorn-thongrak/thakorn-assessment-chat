@@ -31,7 +31,11 @@ export function verifySignature(rawBody: string, signature: string | null): bool
   return crypto.timingSafeEqual(expected, actual);
 }
 
-export async function replyMessage(replyToken: string, text: string): Promise<void> {
+export type OutboundMessage =
+  | { type: "text"; text: string }
+  | { type: "sticker"; packageId: string; stickerId: string };
+
+export async function replyMessage(replyToken: string, message: OutboundMessage): Promise<void> {
   const res = await fetch(`${LINE_API_BASE}/reply`, {
     method: "POST",
     headers: {
@@ -40,7 +44,7 @@ export async function replyMessage(replyToken: string, text: string): Promise<vo
     },
     body: JSON.stringify({
       replyToken,
-      messages: [{ type: "text", text }],
+      messages: [message],
     }),
   });
 
@@ -50,7 +54,7 @@ export async function replyMessage(replyToken: string, text: string): Promise<vo
   }
 }
 
-export async function pushMessage(userId: string, text: string): Promise<void> {
+export async function pushMessage(userId: string, message: OutboundMessage): Promise<void> {
   const res = await fetch(`${LINE_API_BASE}/push`, {
     method: "POST",
     headers: {
@@ -59,7 +63,7 @@ export async function pushMessage(userId: string, text: string): Promise<void> {
     },
     body: JSON.stringify({
       to: userId,
-      messages: [{ type: "text", text }],
+      messages: [message],
     }),
   });
 
@@ -88,8 +92,16 @@ export interface LineWebhookEvent {
   type: string;
   replyToken?: string;
   source?: { userId?: string; type?: string };
-  message?: { type: string; text?: string };
+  message?: { type: string; text?: string; packageId?: string; stickerId?: string };
   timestamp?: number;
+}
+
+/**
+ * Public CDN URL LINE documents for rendering a sticker image from its id —
+ * works for any sticker (official or user-sent), not just ones we picked.
+ */
+export function stickerImageUrl(stickerId: string): string {
+  return `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/android/sticker.png`;
 }
 
 export interface LineWebhookBody {

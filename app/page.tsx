@@ -2,11 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 
+type MessageContent =
+  | { type: "text"; text: string }
+  | { type: "sticker"; packageId: string; stickerId: string };
+
 interface ChatMessage {
   id: string;
   userId: string;
   direction: "incoming" | "outgoing";
-  text: string;
+  content: MessageContent;
   timestamp: number;
 }
 
@@ -23,6 +27,23 @@ interface ConversationSummary {
 
 const POLL_INTERVAL_MS = 2500;
 const STORAGE_KEY = "line-webchat-user-id";
+
+/** Public CDN pattern LINE documents for rendering any sticker id as an image. */
+function stickerImageUrl(stickerId: string): string {
+  return `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/android/sticker.png`;
+}
+
+/** A handful of LINE's classic free stickers, used across LINE's own API docs/samples for testing. */
+const STICKER_PICKER_OPTIONS = [
+  "52002734",
+  "52002735",
+  "52002736",
+  "52002737",
+  "52002738",
+  "52002739",
+  "52002740",
+  "52002741",
+].map((stickerId) => ({ packageId: "11537", stickerId }));
 
 function readSavedUserId(): string {
   if (typeof window === "undefined") return "";
@@ -127,7 +148,9 @@ function ConversationList({
               <p className="truncate text-sm font-medium text-gray-800">
                 {c.profile?.displayName ?? c.userId}
               </p>
-              <p className="truncate text-xs text-gray-400">{c.lastMessage.text}</p>
+              <p className="truncate text-xs text-gray-400">
+                {c.lastMessage.content.type === "text" ? c.lastMessage.content.text : "[สติกเกอร์]"}
+              </p>
             </div>
           </button>
         </li>
@@ -141,6 +164,7 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showStickers, setShowStickers] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastIdRef = useRef<string | undefined>(undefined);
 
@@ -179,9 +203,8 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  async function sendMessage() {
-    const text = draft.trim();
-    if (!text || !lineUserId || sending) return;
+  async function sendContent(content: MessageContent) {
+    if (!lineUserId || sending) return;
 
     setSending(true);
     setError(null);
@@ -189,7 +212,7 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
       const res = await fetch("/api/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: lineUserId, text }),
+        body: JSON.stringify({ userId: lineUserId, content }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -198,12 +221,23 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
       const data: { message: ChatMessage } = await res.json();
       setMessages((prev) => [...prev, data.message]);
       lastIdRef.current = data.message.id;
-      setDraft("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send message");
     } finally {
       setSending(false);
     }
+  }
+
+  async function sendDraft() {
+    const text = draft.trim();
+    if (!text) return;
+    setDraft("");
+    await sendContent({ type: "text", text });
+  }
+
+  async function sendSticker(packageId: string, stickerId: string) {
+    setShowStickers(false);
+    await sendContent({ type: "sticker", packageId, stickerId });
   }
 
   return (
@@ -219,36 +253,72 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
         )}
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.direction === "outgoing" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm shadow-sm ${
-                m.direction === "outgoing"
-                  ? "bg-emerald-500 text-white rounded-br-sm"
-                  : "bg-white text-gray-800 border border-gray-200 rounded-bl-sm"
-              }`}
-            >
-              <p className="whitespace-pre-wrap break-words">{m.text}</p>
-              <p className={`mt-1 text-[10px] ${m.direction === "outgoing" ? "text-emerald-100" : "text-gray-400"}`}>
-                {new Date(m.timestamp).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
-              </p>
-            </div>
+            {m.content.type === "sticker" ? (
+              <div className="flex flex-col items-end">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={stickerImageUrl(m.content.stickerId)} alt="sticker" className="h-24 w-24" />
+                <p className="mt-0.5 text-[10px] text-gray-400">
+                  {new Date(m.timestamp).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+            ) : (
+              <div
+                className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm shadow-sm ${
+                  m.direction === "outgoing"
+                    ? "bg-emerald-500 text-white rounded-br-sm"
+                    : "bg-white text-gray-800 border border-gray-200 rounded-bl-sm"
+                }`}
+              >
+                <p className="whitespace-pre-wrap break-words">{m.content.text}</p>
+                <p className={`mt-1 text-[10px] ${m.direction === "outgoing" ? "text-emerald-100" : "text-gray-400"}`}>
+                  {new Date(m.timestamp).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+            )}
           </div>
         ))}
       </div>
 
       {error && <p className="px-4 pt-1 text-xs text-red-500">{error}</p>}
 
+      {showStickers && (
+        <div className="grid grid-cols-4 gap-2 border-t border-gray-200 bg-white p-3">
+          {STICKER_PICKER_OPTIONS.map((s) => (
+            <button
+              key={s.stickerId}
+              onClick={() => sendSticker(s.packageId, s.stickerId)}
+              disabled={!lineUserId || sending}
+              className="rounded-lg p-1 hover:bg-emerald-50 disabled:opacity-50"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={stickerImageUrl(s.stickerId)} alt="sticker" className="h-14 w-14" />
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center gap-2 border-t border-gray-200 bg-white p-3">
+        <button
+          onClick={() => setShowStickers((v) => !v)}
+          disabled={!lineUserId}
+          aria-label="สติกเกอร์"
+          className={`shrink-0 rounded-full p-2 text-lg transition disabled:opacity-40 ${
+            showStickers ? "bg-emerald-100" : "hover:bg-gray-100"
+          }`}
+        >
+          😊
+        </button>
         <input
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          onKeyDown={(e) => e.key === "Enter" && sendDraft()}
           placeholder="พิมพ์ข้อความ..."
           disabled={!lineUserId}
           className="flex-1 rounded-full border border-gray-200 px-4 py-2 text-sm text-gray-900 outline-none focus:border-emerald-500 disabled:bg-gray-50"
         />
         <button
-          onClick={sendMessage}
+          onClick={sendDraft}
           disabled={!lineUserId || !draft.trim() || sending}
           className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-gray-300"
         >

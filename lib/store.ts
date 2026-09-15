@@ -12,11 +12,15 @@
 
 export type MessageDirection = "incoming" | "outgoing";
 
+export type MessageContent =
+  | { type: "text"; text: string }
+  | { type: "sticker"; packageId: string; stickerId: string };
+
 export interface ChatMessage {
   id: string;
   userId: string;
   direction: MessageDirection;
-  text: string;
+  content: MessageContent;
   timestamp: number;
 }
 
@@ -38,13 +42,13 @@ let nextId = 1;
 export function addMessage(
   userId: string,
   direction: MessageDirection,
-  text: string
+  content: MessageContent
 ): ChatMessage {
   const message: ChatMessage = {
     id: String(nextId++),
     userId,
     direction,
-    text,
+    content,
     timestamp: Date.now(),
   };
   const existing = messagesByUser.get(userId) ?? [];
