@@ -25,6 +25,11 @@ interface ConversationSummary {
   lastMessage: ChatMessage;
 }
 
+interface BotInfo {
+  displayName: string;
+  pictureUrl?: string;
+}
+
 const POLL_INTERVAL_MS = 2500;
 const STORAGE_KEY = "line-webchat-user-id";
 
@@ -52,7 +57,17 @@ function readSavedUserId(): string {
 
 export default function Home() {
   const [lineUserId, setLineUserId] = useState(readSavedUserId);
-  const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
+  const [conversations, setConversations] = useState<
+    ConversationSummary[] | null
+  >(null);
+  const [botInfo, setBotInfo] = useState<BotInfo | null>(null);
+
+  useEffect(() => {
+    fetch("/api/bot-info")
+      .then((res) => res.json())
+      .then((data: { botInfo: BotInfo | null }) => setBotInfo(data.botInfo))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,7 +109,9 @@ export default function Home() {
     localStorage.setItem(STORAGE_KEY, next);
   }
 
-  const isValidSelection = lineUserId !== "" && (conversations?.some((c) => c.userId === lineUserId) ?? false);
+  const isValidSelection =
+    lineUserId !== "" &&
+    (conversations?.some((c) => c.userId === lineUserId) ?? false);
 
   return (
     <div className="flex flex-1 items-center justify-center p-4">
@@ -104,20 +121,40 @@ export default function Home() {
       >
         <aside className="flex w-full flex-col border-b border-emerald-100 md:w-72 md:shrink-0 md:border-b-0 md:border-r">
           <header className="flex items-center gap-3 bg-emerald-600 px-4 py-3 text-white">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-emerald-600 font-bold">
-              L
-            </div>
+            {botInfo?.pictureUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={botInfo.pictureUrl}
+                alt=""
+                className="h-9 w-9 shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-emerald-600 font-bold">
+                L
+              </div>
+            )}
             <div>
-              <p className="font-semibold leading-tight">LINE Webchat</p>
-              <p className="text-xs text-emerald-100 leading-tight">เชื่อมต่อกับ LINE Official Account</p>
+              <p className="font-semibold leading-tight">
+                {botInfo?.displayName ?? "LINE Webchat"}
+              </p>
+              <p className="text-xs text-emerald-100 leading-tight">
+                เชื่อมต่อกับ LINE Official Account
+              </p>
             </div>
           </header>
 
-          <ConversationList conversations={conversations} selectedUserId={lineUserId} onSelect={selectUserId} />
+          <ConversationList
+            conversations={conversations}
+            selectedUserId={lineUserId}
+            onSelect={selectUserId}
+          />
         </aside>
 
         <div className="flex flex-1 flex-col overflow-hidden">
-          <ChatSession key={lineUserId} lineUserId={isValidSelection ? lineUserId : ""} />
+          <ChatSession
+            key={lineUserId}
+            lineUserId={isValidSelection ? lineUserId : ""}
+          />
         </div>
       </div>
     </div>
@@ -153,7 +190,11 @@ function ConversationList({
           >
             {c.profile?.pictureUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={c.profile.pictureUrl} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+              <img
+                src={c.profile.pictureUrl}
+                alt=""
+                className="h-9 w-9 shrink-0 rounded-full object-cover"
+              />
             ) : (
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-200 text-sm font-semibold text-emerald-700">
                 {(c.profile?.displayName ?? c.userId).slice(0, 1).toUpperCase()}
@@ -164,7 +205,9 @@ function ConversationList({
                 {c.profile?.displayName ?? c.userId}
               </p>
               <p className="truncate text-xs text-gray-400">
-                {c.lastMessage.content.type === "text" ? c.lastMessage.content.text : "[สติกเกอร์]"}
+                {c.lastMessage.content.type === "text"
+                  ? c.lastMessage.content.text
+                  : "[สติกเกอร์]"}
               </p>
             </div>
           </button>
@@ -215,7 +258,10 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
   }, [lineUserId]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [messages]);
 
   async function sendContent(content: MessageContent) {
@@ -257,23 +303,38 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
 
   return (
     <>
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-[repeating-linear-gradient(0deg,#f0fdf4,#f0fdf4_40px)] px-4 py-4">
+      <div
+        ref={scrollRef}
+        className="flex-1 space-y-3 overflow-y-auto bg-[repeating-linear-gradient(0deg,#f0fdf4,#f0fdf4_40px)] px-4 py-4"
+      >
         {!lineUserId && (
           <p className="mt-6 text-center text-sm text-gray-400">
             เลือกการสนทนาทางซ้ายเพื่อเริ่มแชท
           </p>
         )}
         {lineUserId && messages.length === 0 && (
-          <p className="mt-6 text-center text-sm text-gray-400">ยังไม่มีข้อความ</p>
+          <p className="mt-6 text-center text-sm text-gray-400">
+            ยังไม่มีข้อความ
+          </p>
         )}
         {messages.map((m) => (
-          <div key={m.id} className={`flex ${m.direction === "outgoing" ? "justify-end" : "justify-start"}`}>
+          <div
+            key={m.id}
+            className={`flex ${m.direction === "outgoing" ? "justify-end" : "justify-start"}`}
+          >
             {m.content.type === "sticker" ? (
               <div className="flex flex-col items-end">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={stickerImageUrl(m.content.stickerId)} alt="sticker" className="h-24 w-24" />
+                <img
+                  src={stickerImageUrl(m.content.stickerId)}
+                  alt="sticker"
+                  className="h-24 w-24"
+                />
                 <p className="mt-0.5 text-[10px] text-gray-400">
-                  {new Date(m.timestamp).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
+                  {new Date(m.timestamp).toLocaleTimeString("th-TH", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </p>
               </div>
             ) : (
@@ -284,9 +345,16 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
                     : "bg-white text-gray-800 border border-gray-200 rounded-bl-sm"
                 }`}
               >
-                <p className="whitespace-pre-wrap break-words">{m.content.text}</p>
-                <p className={`mt-1 text-[10px] ${m.direction === "outgoing" ? "text-emerald-100" : "text-gray-400"}`}>
-                  {new Date(m.timestamp).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
+                <p className="whitespace-pre-wrap break-words">
+                  {m.content.text}
+                </p>
+                <p
+                  className={`mt-1 text-[10px] ${m.direction === "outgoing" ? "text-emerald-100" : "text-gray-400"}`}
+                >
+                  {new Date(m.timestamp).toLocaleTimeString("th-TH", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </p>
               </div>
             )}
@@ -306,7 +374,11 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
               className="rounded-lg p-1 hover:bg-emerald-50 disabled:opacity-50"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={stickerImageUrl(s.stickerId)} alt="sticker" className="h-14 w-14" />
+              <img
+                src={stickerImageUrl(s.stickerId)}
+                alt="sticker"
+                className="h-14 w-14"
+              />
             </button>
           ))}
         </div>
