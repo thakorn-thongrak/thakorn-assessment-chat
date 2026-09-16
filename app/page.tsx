@@ -23,6 +23,7 @@ interface ConversationSummary {
   userId: string;
   profile: ConversationProfile | null;
   lastMessage: ChatMessage;
+  unread: boolean;
 }
 
 interface BotInfo {
@@ -201,15 +202,22 @@ function ConversationList({
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-gray-800">
+              <p
+                className={`truncate text-sm ${c.unread ? "font-semibold text-gray-900" : "font-medium text-gray-800"}`}
+              >
                 {c.profile?.displayName ?? c.userId}
               </p>
-              <p className="truncate text-xs text-gray-400">
+              <p
+                className={`truncate text-xs ${c.unread ? "font-medium text-gray-600" : "text-gray-400"}`}
+              >
                 {c.lastMessage.content.type === "text"
                   ? c.lastMessage.content.text
                   : "[สติกเกอร์]"}
               </p>
             </div>
+            {c.unread && (
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" aria-label="ยังไม่ได้อ่าน" />
+            )}
           </button>
         </li>
       ))}
@@ -231,6 +239,14 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
 
     let cancelled = false;
 
+    function markRead() {
+      fetch("/api/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: lineUserId }),
+      }).catch(() => {});
+    }
+
     async function poll() {
       try {
         const params = new URLSearchParams({ userId: lineUserId });
@@ -244,10 +260,16 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
 
         setMessages((prev) => [...prev, ...data.messages]);
         lastIdRef.current = data.messages[data.messages.length - 1].id;
+        markRead();
       } catch {
         // Silently retry on the next poll tick.
       }
     }
+
+    // The conversation is open on screen right now, so mark it read
+    // immediately too — no need to wait for a poll tick to find new
+    // messages before clearing an already-visible badge.
+    markRead();
 
     poll();
     const interval = setInterval(poll, POLL_INTERVAL_MS);

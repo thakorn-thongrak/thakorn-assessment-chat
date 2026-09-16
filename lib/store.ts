@@ -8,6 +8,11 @@
  *   time, so the conversation list can be read back most-recent-first.
  * - `profile:{userId}`  — the cached LINE display name/avatar for that user.
  * - `message:next_id`   — a counter (INCR) for globally unique message ids.
+ * - `read:{userId}`     — the id of the last message the admin has seen in
+ *   that conversation (message ids increase monotonically across every
+ *   conversation, since they share one global counter, so a plain numeric
+ *   comparison against a conversation's last message id is enough to tell
+ *   whether it has unread activity).
  */
 
 import { Redis } from "@upstash/redis";
@@ -37,6 +42,7 @@ export interface ConversationSummary {
   userId: string;
   profile: ConversationProfile | null;
   lastMessage: ChatMessage;
+  unread: boolean;
 }
 
 export async function addMessage(
@@ -96,15 +102,29 @@ export async function listConversations(): Promise<ConversationSummary[]> {
 
   const summaries = await Promise.all(
     userIds.map(async (userId): Promise<ConversationSummary | null> => {
-      const [profile, lastMessages] = await Promise.all([
+      const [profile, lastMessages, readId] = await Promise.all([
         redis.get<ConversationProfile>(`profile:${userId}`),
         redis.lrange<ChatMessage>(`messages:${userId}`, -1, -1),
+        redis.get<string>(`read:${userId}`),
       ]);
       const lastMessage = lastMessages[0];
       if (!lastMessage) return null;
-      return { userId, profile: profile ?? null, lastMessage };
+
+      const unread =
+        lastMessage.direction === "incoming" &&
+        (readId === null || Number(lastMessage.id) > Number(readId));
+
+      return { userId, profile: profile ?? null, lastMessage, unread };
     })
   );
 
   return summaries.filter((s): s is ConversationSummary => s !== null);
+}
+
+/** Marks a conversation as read up to its current latest message. */
+export async function markConversationRead(userId: string): Promise<void> {
+  const latest = await redis.lrange<ChatMessage>(`messages:${userId}`, -1, -1);
+  const lastMessage = latest[0];
+  if (!lastMessage) return;
+  await redis.set(`read:${userId}`, lastMessage.id);
 }
