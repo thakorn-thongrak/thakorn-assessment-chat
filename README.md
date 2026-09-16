@@ -33,19 +33,16 @@ npm run dev
 
 เปิด http://localhost:3000 — ถ้าจะทดสอบ webhook จาก local ต้อง expose ผ่าน ngrok ก่อน
 
-## Setup LINE Developers Console
+## API ทั้ง 5 เส้น
 
-1. https://developers.line.biz/console/ → สร้าง Provider → สร้าง Channel ประเภท Messaging API
-2. แท็บ Basic settings: คัดลอก Channel secret
-3. แท็บ Messaging API: ออก Channel access token, ปิด Auto-reply/Greeting messages, เปิด Use webhook, คัดลอก Basic ID (`@xxxxxxx`)
-4. แอดเพื่อน OA ตัวเอง (QR code/Basic ID) แล้วทักทดสอบ
-
-## Deploy ขึ้น Vercel
-
-1. Push โค้ดขึ้น GitHub ก่อน
-2. Vercel → Add New Project → เลือก repo → ใส่ env vars ทั้ง 3 ตัว → Deploy
-3. เอา URL ที่ได้ไปใส่เป็น Webhook URL ใน LINE Console (`https://<url>/api/webhook`) แล้วกด Verify
-4. เปิดเว็บ แอดเพื่อน OA แล้วทัก — ชื่อควรโผล่ใน sidebar ให้กดคุยได้
+| Endpoint | ใครเรียก / ตอนไหน | ทำอะไร |
+|---|---|---|
+| `POST /api/webhook` | LINE เรียกมาเอง ทุกครั้งที่ user ทัก/ส่งสติกเกอร์เข้า OA | verify signature, เก็บข้อความลง Redis, ดึงโปรไฟล์ผู้ส่ง (ถ้ายังไม่เคยเก็บ) |
+| `GET /api/messages` | เว็บ polling ทุก 2.5 วิ ตอนเปิดห้องแชท | ดึงข้อความในห้องนั้น (ใช้ `after` กันดึงซ้ำ) |
+| `DELETE /api/messages` | เว็บเรียกตอนกดปุ่ม "ลบ" บน bubble | ลบข้อความออกจาก Redis ฝั่งเราเท่านั้น |
+| `POST /api/push` | เว็บเรียกตอนแอดมินกดส่งข้อความ/สติกเกอร์ | ยิงไป LINE Push API แล้วบันทึกเป็น outgoing |
+| `GET /api/conversations` | เว็บ polling ทุก 2.5 วิ ตลอดเวลาที่เปิดหน้าเว็บ | คืนรายชื่อ/รูป/ข้อความล่าสุดของทุกคนที่เคยทักมา ให้ sidebar โชว์ |
+| `GET /api/bot-info` | เว็บเรียกครั้งเดียวตอนโหลดหน้า | ดึงชื่อ/รูปโปรไฟล์จริงของ OA มาโชว์ที่ header |
 
 ## Push ขึ้น GitHub
 
