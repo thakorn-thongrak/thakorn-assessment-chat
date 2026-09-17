@@ -117,25 +117,27 @@ export default function Home() {
   return (
     <div className="flex flex-1 items-center justify-center p-4">
       <div
+        data-testid="webchat-app"
         className="flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-lg md:flex-row"
         style={{ height: "min(720px, 90vh)" }}
       >
-        <aside className="flex w-full flex-col border-b border-emerald-100 md:w-72 md:shrink-0 md:border-b-0 md:border-r">
-          <header className="flex items-center gap-3 bg-emerald-600 px-4 py-3 text-white">
+        <aside data-testid="sidebar" className="flex w-full flex-col border-b border-emerald-100 md:w-72 md:shrink-0 md:border-b-0 md:border-r">
+          <header data-testid="sidebar-header" className="flex items-center gap-3 bg-emerald-600 px-4 py-3 text-white">
             {botInfo?.pictureUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
+                data-testid="bot-avatar"
                 src={botInfo.pictureUrl}
                 alt=""
                 className="h-9 w-9 shrink-0 rounded-full object-cover"
               />
             ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-emerald-600 font-bold">
+              <div data-testid="bot-avatar-placeholder" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-emerald-600 font-bold">
                 L
               </div>
             )}
             <div>
-              <p className="font-semibold leading-tight">
+              <p data-testid="bot-display-name" className="font-semibold leading-tight">
                 {botInfo?.displayName ?? "LINE Webchat"}
               </p>
               <p className="text-xs text-emerald-100 leading-tight">
@@ -151,7 +153,7 @@ export default function Home() {
           />
         </aside>
 
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div data-testid="chat-panel" className="flex flex-1 flex-col overflow-hidden">
           <ChatSession
             key={lineUserId}
             lineUserId={isValidSelection ? lineUserId : ""}
@@ -173,18 +175,19 @@ function ConversationList({
 }) {
   if (!conversations || conversations.length === 0) {
     return (
-      <p className="flex-1 px-4 py-6 text-center text-sm text-gray-400">
+      <p data-testid="conversation-list-empty" className="flex-1 px-4 py-6 text-center text-sm text-gray-400">
         ยังไม่มีคนทักเข้ามาใน LINE OA
       </p>
     );
   }
 
   return (
-    <ul className="flex-1 overflow-y-auto">
+    <ul data-testid="conversation-list" className="flex-1 overflow-y-auto">
       {conversations.map((c) => (
-        <li key={c.userId}>
+        <li key={c.userId} data-testid="conversation-item" data-user-id={c.userId}>
           <button
             onClick={() => onSelect(c.userId)}
+            data-testid="conversation-item-button"
             className={`flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-emerald-50 ${
               c.userId === selectedUserId ? "bg-emerald-100" : ""
             }`}
@@ -192,22 +195,25 @@ function ConversationList({
             {c.profile?.pictureUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
+                data-testid="conversation-avatar"
                 src={c.profile.pictureUrl}
                 alt=""
                 className="h-9 w-9 shrink-0 rounded-full object-cover"
               />
             ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-200 text-sm font-semibold text-emerald-700">
+              <div data-testid="conversation-avatar-placeholder" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-200 text-sm font-semibold text-emerald-700">
                 {(c.profile?.displayName ?? c.userId).slice(0, 1).toUpperCase()}
               </div>
             )}
             <div className="min-w-0 flex-1">
               <p
+                data-testid="conversation-name"
                 className={`truncate text-sm ${c.unread ? "font-semibold text-gray-900" : "font-medium text-gray-800"}`}
               >
                 {c.profile?.displayName ?? c.userId}
               </p>
               <p
+                data-testid="conversation-preview"
                 className={`truncate text-xs ${c.unread ? "font-medium text-gray-600" : "text-gray-400"}`}
               >
                 {c.lastMessage.content.type === "text"
@@ -216,7 +222,7 @@ function ConversationList({
               </p>
             </div>
             {c.unread && (
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" aria-label="ยังไม่ได้อ่าน" />
+              <span data-testid="unread-badge" className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" aria-label="ยังไม่ได้อ่าน" />
             )}
           </button>
         </li>
@@ -342,15 +348,16 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
     <>
       <div
         ref={scrollRef}
+        data-testid="message-list"
         className="flex-1 space-y-3 overflow-y-auto bg-[repeating-linear-gradient(0deg,#f0fdf4,#f0fdf4_40px)] px-4 py-4"
       >
         {!lineUserId && (
-          <p className="mt-6 text-center text-sm text-gray-400">
+          <p data-testid="no-conversation-selected" className="mt-6 text-center text-sm text-gray-400">
             เลือกการสนทนาทางซ้ายเพื่อเริ่มแชท
           </p>
         )}
         {lineUserId && messages.length === 0 && (
-          <p className="mt-6 text-center text-sm text-gray-400">
+          <p data-testid="message-list-empty" className="mt-6 text-center text-sm text-gray-400">
             ยังไม่มีข้อความ
           </p>
         )}
@@ -363,11 +370,15 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
           return (
             <div
               key={m.id}
+              data-testid="message-row"
+              data-message-id={m.id}
+              data-direction={m.direction}
               className={`group flex items-end gap-1.5 ${m.direction === "outgoing" ? "justify-end" : "justify-start"}`}
             >
               {m.direction === "outgoing" && (
                 <button
                   onClick={() => deleteMessage(m.id)}
+                  data-testid="delete-message-button"
                   title="ลบออกจากเว็บนี้ (ไม่กระทบข้อความในแอป LINE ของคู่สนทนา)"
                   className="mb-1 hidden shrink-0 rounded-full px-1.5 py-0.5 text-xs text-gray-400 hover:bg-gray-100 hover:text-red-500 group-hover:inline-block"
                 >
@@ -376,7 +387,7 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
               )}
 
               {m.content.type === "sticker" ? (
-                <div className="flex flex-col items-end">
+                <div data-testid="message-sticker" className="flex flex-col items-end">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={stickerImageUrl(m.content.stickerId)}
@@ -387,13 +398,14 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
                 </div>
               ) : (
                 <div
+                  data-testid="message-bubble"
                   className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm shadow-sm ${
                     m.direction === "outgoing"
                       ? "bg-emerald-500 text-white rounded-br-sm"
                       : "bg-white text-gray-800 border border-gray-200 rounded-bl-sm"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap break-words">
+                  <p data-testid="message-text" className="whitespace-pre-wrap break-words">
                     {m.content.text}
                   </p>
                   <p
@@ -407,6 +419,7 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
               {m.direction === "incoming" && (
                 <button
                   onClick={() => deleteMessage(m.id)}
+                  data-testid="delete-message-button"
                   title="ลบออกจากเว็บนี้ (ไม่กระทบข้อความในแอป LINE ของคู่สนทนา)"
                   className="mb-1 hidden shrink-0 rounded-full px-1.5 py-0.5 text-xs text-gray-400 hover:bg-gray-100 hover:text-red-500 group-hover:inline-block"
                 >
@@ -418,15 +431,16 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
         })}
       </div>
 
-      {error && <p className="px-4 pt-1 text-xs text-red-500">{error}</p>}
+      {error && <p data-testid="chat-error" className="px-4 pt-1 text-xs text-red-500">{error}</p>}
 
       {showStickers && (
-        <div className="grid grid-cols-4 gap-2 border-t border-gray-200 bg-white p-3">
+        <div data-testid="sticker-picker" className="grid grid-cols-4 gap-2 border-t border-gray-200 bg-white p-3">
           {STICKER_PICKER_OPTIONS.map((s) => (
             <button
               key={s.stickerId}
               onClick={() => sendSticker(s.packageId, s.stickerId)}
               disabled={!lineUserId || sending}
+              data-testid="sticker-picker-option"
               className="rounded-lg p-1 hover:bg-emerald-50 disabled:opacity-50"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -440,11 +454,12 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
         </div>
       )}
 
-      <div className="flex items-center gap-2 border-t border-gray-200 bg-white p-3">
+      <div data-testid="composer" className="flex items-center gap-2 border-t border-gray-200 bg-white p-3">
         <button
           onClick={() => setShowStickers((v) => !v)}
           disabled={!lineUserId}
           aria-label="สติกเกอร์"
+          data-testid="sticker-toggle-button"
           className={`shrink-0 rounded-full p-2 text-lg transition disabled:opacity-40 ${
             showStickers ? "bg-emerald-100" : "hover:bg-gray-100"
           }`}
@@ -458,11 +473,13 @@ function ChatSession({ lineUserId }: { lineUserId: string }) {
           onKeyDown={(e) => e.key === "Enter" && sendDraft()}
           placeholder="พิมพ์ข้อความ..."
           disabled={!lineUserId}
+          data-testid="message-input"
           className="flex-1 rounded-full border border-gray-200 px-4 py-2 text-sm text-gray-900 outline-none focus:border-emerald-500 disabled:bg-gray-50"
         />
         <button
           onClick={sendDraft}
           disabled={!lineUserId || !draft.trim() || sending}
+          data-testid="send-button"
           className="rounded-full bg-emerald-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
           ส่ง
